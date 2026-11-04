@@ -58,23 +58,23 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 
 | # | 摩擦 | 影响 | issue |
 |---|---|---|---|
-| F1 | 没有预编译二进制 / 运行镜像；`release.yml` 调用的 `scripts/release.sh` 不存在；二进制要求 GLIBC 2.44 | 首次运行 ≈14 分钟 + 10GB 镜像 | ISSUE_INSTALL |
-| F2 | 默认沙箱（Restricted）下 `set-code` / `mutate:rebind` 被拒，连对自己 `cons` 出来的数据 `set-car!` 也被拒；报错写成 `type error: effect-denied: mutate not granted`，不提示 `aura soft` 或 `AURA_SANDBOX=off` | 第一次运行就失败，不知道怎么办 | ISSUE_ERRORS |
-| F3 | `aura soft` 下第一次 `mutate:rebind` 列表值就 `persist-reject`（伴随 `[#2341] Densify … panic_residual`），之后所有 rebind 都 `densify-throttle`，`ast:restore` 返回 `#f`，workspace 卡死 | 自进化在官方推荐的实验面跑不通 | ISSUE_SOFT |
-| F4 | `AURA_PIPELINE_STRICT=force-soa` 下 `mutate:rebind` 每步越来越慢：0.5 s → 3.3 s → 8.3 s → 16 s（其他模式 1–3 ms） | force-soa 下 kit 超时 | ISSUE_FORCESOA |
-| F5 | 同一程序在 9 种执行方式下结果不一致：只有 sandbox=off 且非 force-soa 的 4 格一致 | 无法相信"本地跑通 = 生产跑通" | ISSUE_SEMANTICS |
-| F6 | 被 `require` 的模块里出错时，报错不带文件名，`行:列` 是那个模块的，代码片段却取自主文件（`memq` 未定义被显示成 `main.aura` 第 4 行） | 定位错误靠猜 | ISSUE_LOC |
-| F7 | 顶层出错后程序继续往下执行，一个错误引出一串 `unbound variable`；同一个 `(error …)` 在不同行被报 6 次；用户自己的 `(error "…")` 也被印成 `type error:` | 真正的第一个错误淹没在噪声里 | ISSUE_ERRORS |
-| F8 | `write-file` 失败（目录不存在、权限、路径被拒）时只返回 `()`，不报错、退出码 0 | 报告"生成成功"但文件不存在 | ISSUE_WRITEFILE |
-| F9 | 相对路径 `(require "./x")` 按**当前工作目录**解析，不按文件所在目录；从别的目录运行就 `cannot resolve './x'` | kit 只能 cd 到目录里跑 | ISSUE_REQUIRE |
-| F10 | `(require "std/fs")` 在默认沙箱里加载时就要 write 权限，报 `internal error: module-load-failed`；`file-exists?` 原语不 require 就是 unbound，`std/fs` 版本返回 Bool 而原语声明返回 Int | 不敢用标准库 | ISSUE_STDFS |
-| F11 | CLI 无法授予 MacroSelfEvo / TenantAdmin；只能整体关沙箱 | 安全默认值和可用性二选一 | ISSUE_PRESETS |
-| F12 | 自进化没有现成的可观测性：KEEP/ROLLBACK、原因、门禁证据、HTML 报告全靠自己写（本 kit 的 `report.aura` ~100 行） | 每个项目重复造轮子 | ISSUE_OBS |
-| F13 | 没有 REPL 热重载 / worldline 查看；没有 LSP（高亮、跳转、诊断） | 改一行要整程序重跑（含 19 s 容器启动） | ISSUE_REPL |
-| F14 | 没有 `aura new <模板>`（`aura new foo` → `cannot open program file 'new'`）；`--help` 不列 `--check/--fmt/--typecheck/--evo-explain/--query`；`aura soft --load` 报 unknown option | 只能翻源码 | ISSUE_NEW |
-| F15 | 小坑：`memq` 不存在（`member` 可以）且无提示；`(query :code)` 是未知 op，但有 `query:code` 原语；`sh` 需要 `(require "std/process")`，而它在默认沙箱要 exec 权限 | 卡几分钟 | ISSUE_ERRORS |
+| F1 | 没有预编译二进制 / 运行镜像；`release.yml` 调用的 `scripts/release.sh` 不存在；二进制要求 GLIBC 2.44 | 首次运行 ≈14 分钟 + 10GB 镜像 | [aura#4907](https://github.com/cybrid-systems/aura/issues/4907) |
+| F2 | 默认沙箱（Restricted）下 `set-code` / `mutate:rebind` 被拒，连对自己 `cons` 出来的数据 `set-car!` 也被拒；报错写成 `type error: effect-denied: mutate not granted`，不提示 `aura soft` 或 `AURA_SANDBOX=off` | 第一次运行就失败，不知道怎么办 | [aura#4909](https://github.com/cybrid-systems/aura/issues/4909)、[aura#4912](https://github.com/cybrid-systems/aura/issues/4912) |
+| F3 | `aura soft` 下第一次 `mutate:rebind` 列表值就 `persist-reject`（伴随 `[#2341] Densify … panic_residual`），之后所有 rebind 都 `densify-throttle`，`ast:restore` 返回 `#f`，workspace 卡死 | 自进化在官方推荐的实验面跑不通 | [aura#4914](https://github.com/cybrid-systems/aura/issues/4914) |
+| F4 | `AURA_PIPELINE_STRICT=force-soa` 下 `mutate:rebind` 每步越来越慢：0.5 s → 3.3 s → 8.3 s → 16 s（其他模式 1–3 ms） | force-soa 下 kit 超时 | [aura#4915](https://github.com/cybrid-systems/aura/issues/4915) |
+| F5 | 同一程序在 15 种执行方式下结果不一致：只有 sandbox=off 且非 force-soa 的 4 格一致 | 无法相信"本地跑通 = 生产跑通" | [aura#4908](https://github.com/cybrid-systems/aura/issues/4908) |
+| F6 | 被 `require` 的模块里出错时，报错不带文件名，`行:列` 是那个模块的，代码片段却取自主文件（`memq` 未定义被显示成 `main.aura` 第 4 行） | 定位错误靠猜 | [aura#4916](https://github.com/cybrid-systems/aura/issues/4916) |
+| F7 | 顶层出错后程序继续往下执行，一个错误引出一串 `unbound variable`；同一个 `(error …)` 在不同行被报 6 次；用户自己的 `(error "…")` 也被印成 `type error:` | 真正的第一个错误淹没在噪声里 | [aura#4909](https://github.com/cybrid-systems/aura/issues/4909) |
+| F8 | `write-file` 失败（目录不存在、权限、路径被拒）时只返回 `()`，不报错、退出码 0 | 报告"生成成功"但文件不存在 | [aura#4917](https://github.com/cybrid-systems/aura/issues/4917) |
+| F9 | 相对路径 `(require "./x")` 按**当前工作目录**解析，不按文件所在目录；从别的目录运行就 `cannot resolve './x'` | kit 只能 cd 到目录里跑 | [aura#4918](https://github.com/cybrid-systems/aura/issues/4918) |
+| F10 | `(require "std/fs")` 在默认沙箱里加载时就要 write 权限，报 `internal error: module-load-failed`；`file-exists?` 原语不 require 就是 unbound，`std/fs` 版本返回 Bool 而原语声明返回 Int | 不敢用标准库 | [aura#4919](https://github.com/cybrid-systems/aura/issues/4919) |
+| F11 | CLI 无法授予 MacroSelfEvo / TenantAdmin；只能整体关沙箱 | 安全默认值和可用性二选一 | [aura#4912](https://github.com/cybrid-systems/aura/issues/4912) |
+| F12 | 自进化没有现成的可观测性：KEEP/ROLLBACK、原因、门禁证据、HTML 报告全靠自己写（本 kit 的 `report.aura` ~100 行） | 每个项目重复造轮子 | [aura#4910](https://github.com/cybrid-systems/aura/issues/4910) |
+| F13 | 没有 REPL 热重载 / worldline 查看；没有 LSP（高亮、跳转、诊断） | 改一行要整程序重跑（含 19 s 容器启动） | [aura#4911](https://github.com/cybrid-systems/aura/issues/4911) |
+| F14 | 没有 `aura new <模板>`（`aura new foo` → `cannot open program file 'new'`）；`--help` 不列 `--check/--fmt/--typecheck/--evo-explain/--query`；`aura soft --load` 报 unknown option | 只能翻源码 | [aura#4913](https://github.com/cybrid-systems/aura/issues/4913) |
+| F15 | 小坑：`memq` 不存在（`member` 可以）且无提示；`(query :code)` 是未知 op，但有 `query:code` 原语；`sh` 需要 `(require "std/process")`，而它在默认沙箱要 exec 权限 | 卡几分钟 | [aura#4909](https://github.com/cybrid-systems/aura/issues/4909) |
 
-总追踪 issue：ISSUE_TRACK
+总追踪 issue：[aura#4906](https://github.com/cybrid-systems/aura/issues/4906)
 
 ## 约定
 
