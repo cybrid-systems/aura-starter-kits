@@ -56,7 +56,7 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 
 ### 摩擦清单
 
-下表是 `21a862bf5` 时记录的原始摩擦。2026-11-05 在 aura `c4ec74cd9`（本仓库 `AURA_PIN`）上复查，状态见下一节。
+下表是 `21a862bf5` 时记录的原始摩擦。2026-11-05 在 aura `22049db39`（本仓库 `AURA_PIN`）上复查，状态见下一节。
 
 
 | # | 摩擦 | 影响 | issue |
@@ -77,7 +77,7 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 | F14 | 没有 `aura new <模板>`（`aura new foo` → `cannot open program file 'new'`）；`--help` 不列 `--check/--fmt/--typecheck/--evo-explain/--query`；`aura soft --load` 报 unknown option | 只能翻源码 | [aura#4913](https://github.com/cybrid-systems/aura/issues/4913) |
 | F15 | 小坑：`memq` 不存在（`member` 可以）且无提示；`(query :code)` 是未知 op，但有 `query:code` 原语；`sh` 需要 `(require "std/process")`，而它在默认沙箱要 exec 权限 | 卡几分钟 | [aura#4909](https://github.com/cybrid-systems/aura/issues/4909) |
 
-### 复查（aura `c4ec74cd9`，2026-11-05）
+### 复查（aura `22049db39`，2026-11-05）
 
 | # | 状态 | 说明 |
 |---|---|---|
@@ -85,13 +85,13 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 | F2 | 已修 | 拒绝现在报 `effect-denied: mutate not granted … op=set-code`，带 `file:line:col` 和 hint（`aura --preset dev main.aura`）；kit 改用 `aura.toml` 的 `preset = "dev"` |
 | F3 | 已修 | `aura soft` 下 rebind 正常（aura#4914 已关） |
 | F4 | 部分 | force-soa 不再超时，但仍明显更慢：20 步 39 s vs 默认管线 9 s（aura#4915 未关） |
-| F5 | 部分 | 6 步矩阵 15 格里 10 格一致（原来 4 格）。仍不一致：plain `aura --load` 不读 `aura.toml`/`AURA_PRESET`；Restricted + force-soa 下第二次大批量 `set-car!` 报 `naked mutate: set-car! requires MutationBoundaryGuard`，`--load` 下同一拒绝被报成 `invalid closure` |
+| F5 | 部分 | 6 步矩阵 15 格里 12 格一致（原来 4 格）。plain `aura --load` 现在也读 `aura.toml`/`AURA_PRESET`，"naked mutate" 和 `--load` 下的 "invalid closure" 已修（aura#4908 进展）。剩下 Restricted/soft + force-soa 的 3 格：set-code 后 Moving compaction 让 `map`/`apply` 调用的 closure 静默返回 void（[aura#4928](https://github.com/cybrid-systems/aura/issues/4928)） |
 | F6 | 已修 | aura#4916 已关 |
 | F7 | 大部分 | 首个错误即停（`--keep-going` 可继续）、分类准确、每条拒绝带 hint；过程体内的错误位置仍指向调用点（aura#4909） |
 | F8 | 已修 | aura#4917 已关 |
 | F9 | 已修 | aura#4918 已关 |
 | F10 | 已修 | aura#4919 已关 |
-| F11 | 部分 | 有了 `--preset dev\|ci\|prod`、`--grant`/`--deny`、`AURA_PRESET`、`aura.toml`（aura#4912 未关） |
+| F11 | 部分 | 有了 `--preset dev\|ci\|prod`、`--grant`/`--deny`、`AURA_PRESET`、`aura.toml`，`--load` 也生效（aura#4912 未关） |
 | F12 | 未修 | aura#4910 |
 | F13 | 未修 | aura#4911 |
 | F14 | 大部分 | `aura new app\|evolve\|agent`、`aura run`、`aura test` 可用；`--help` 列出 `--check/--fmt/--typecheck/--evo-explain/--query`；`aura soft --load` 可用 |
