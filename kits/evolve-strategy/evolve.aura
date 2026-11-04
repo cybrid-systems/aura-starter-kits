@@ -1,0 +1,125 @@
+;; evolve.aura — 进化循环：提议 → 契约 → ast:snapshot → mutate:rebind → 评测 → 门禁 → KEEP 或 ast:restore
+;;
+;; 被改的是 live AST 里的 strategy-params / strategy-rules 两个定义（不是宿主程序里的变量）。
+;; 每一步都会重新调用 (strategy-params) / (strategy-rules) 读回 live 代码，确认变更真的生效、回滚真的回去了。
+
+(define *grid*
+  (list (list 'fast 2 3 5 8 10 13 20)
+        (list 'slow 5 10 20 30 50 80)
+        (list 'trend 50 100 150 200)
+        (list 'vol-cap 0.15 0.2 0.25 0.3 0.4)
+        (list 'vol-win 10 20 40)))
+(define *optional-rules* (list 'trend-filter 'vol-filter 'long-only))
+
+
+;; ---- 源码序列化：live AST 里放的就是这两段源码 ----
+(define (params->src ps)
+  (string-append "(lambda () (quote ("
+                 (string-join (map (lambda (p) (format "(~a . ~a)" (car p) (cdr p))) ps) " ")
+                 ")))"))
+(define (rules->src rs)
+  (string-append "(lambda () (quote (" (string-join (map (lambda (r) (format "~a" r)) rs) " ") ")))"))
+
+;; ---- 提议：返回 (list 描述 新params 新rules) ----
+;; 25% 增删一条规则；20% 连改两个参数；其余改一个参数（70% 走到相邻取值，30% 跳到网格里任意取值）
+(define (propose r ps rules)
+  (let ((u (rng-float! r)))
+    (cond ((< u 0.25) (propose-rule r ps rules))
+          ((< u 0.45)   ;; 组合变更：连改两个参数（单步局部搜索容易卡在局部最优）
+           (let* ((a (propose-param r ps rules)) (b (propose-param r (cadr a) rules)))
+             (list (string-append (car a) " + " (car b)) (cadr b) rules)))
+          (else (propose-param r ps rules)))))
+
+(define (propose-rule r ps rules)
+  (let ((rule (list-ref *optional-rules* (rng-int! r (length *optional-rules*)))))
+    (if (member rule rules)
+        (list (format "删除规则 ~a" rule) ps (remove-sym rules rule))
+        (list (format "加入规则 ~a" rule) ps (append rules (list rule))))))
+
+(define (propose-param r ps rules)
+  (let* ((g (list-ref *grid* (rng-int! r (length *grid*))))
+         (k (car g)) (vals (cdr g)) (n (length vals))
+         (i (index-of vals (pget ps k)))
+         (d (if (= (rng-int! r 2) 0) -1 1))
+         (j (cond ((< (rng-float! r) 0.3) (rng-int! r n))
+                  ((< i 0) 0) ((< (+ i d) 0) (+ i 1)) ((>= (+ i d) n) (- i 1)) (else (+ i d))))
+         (v (list-ref vals j)))
+    (list (format "~a ~a→~a" k (pget ps k) v) (alist-set ps k v) rules)))
+
+;; 去重：同一步里最多换 30 次提议，找一个没评估过的；都评估过就记一次 DUP
+(define (propose-fresh r ps rules seen)
+  (let loop ((tries 0))
+    (let* ((p (propose r ps rules)) (key (format "~a~a" (cadr p) (caddr p))))
+      (cond ((not (member key seen)) (cons key p))
+            ((>= tries 30) (cons #f p))
+            (else (loop (+ tries 1)))))))
+
+;; ---- 契约：非法提议不花评测预算 ----
+(define (legal? ps rules)
+  (cond ((>= (pget ps 'fast) (pget ps 'slow)) "fast 必须小于 slow")
+        ((not (member (quote ma-cross) rules)) "不能删除基础信号 ma-cross")
+        (else #f)))
+
+(define (evaluate ps rules train val)
+  (list (backtest train ps rules #f) (backtest val ps rules #f)))
+
+(define (live-params) (strategy-params))
+(define (live-rules) (strategy-rules))
+(define (assert-live! ps rules what)
+  (if (and (equal? (live-params) ps) (equal? (live-rules) rules)) #t
+      (error (format "live AST 与预期不一致（~a）：期望 ~a ~a，实际 ~a ~a" what ps rules (live-params) (live-rules)))))
+
+;; 一次 rebind 两个定义；返回 #t 或失败原因
+(define (rebind-ok? v) (eq? v #t))
+(define (apply-mutation! desc ps rules)
+  (let* ((a (mutate:rebind "strategy-params" (params->src ps) desc))
+         (b (if (rebind-ok? a) (mutate:rebind "strategy-rules" (rules->src rules) desc) a)))
+    (if (and (rebind-ok? a) (rebind-ok? b)) (begin (eval-current) #t) (format "~a" (if (rebind-ok? a) b a)))))
+
+;; 主循环：返回 hash（初始/最终结果、审计行、每步分数）
+(define (evolve! steps seed train val)
+  (let* ((r (rng-make seed))
+         (ps0 (live-params)) (rules0 (live-rules))
+         (res0 (evaluate ps0 rules0 train val)))
+    (let loop ((step 1) (ps ps0) (rules rules0) (cur res0) (seen (list (format "~a~a" ps0 rules0)))
+               (audit (list)) (curve (list)) (keeps 0) (rbs 0) (illegal 0) (dups 0))
+      (if (> step steps)
+          (hash "ps0" ps0 "rules0" rules0 "res0" res0 "ps" ps "rules" rules "res" cur
+                "audit" (reverse audit) "curve" (reverse curve)
+                "keeps" keeps "rollbacks" rbs "illegal" illegal "dups" dups)
+          (let* ((kp (propose-fresh r ps rules seen)) (key (car kp)) (p (cdr kp))
+                 (desc (car p)) (nps (cadr p)) (nrules (caddr p)) (why (legal? nps nrules)))
+            (cond
+              ((not key)
+               (loop (+ step 1) ps rules cur seen
+                     (cons (list step desc "-" "-" "-" "-" "DUP" "邻域都评估过了" 0 0) audit)
+                     curve keeps rbs illegal (+ dups 1)))
+              (why (loop (+ step 1) ps rules cur (cons key seen)
+                         (cons (list step desc "-" "-" "-" "-" "ILLEGAL" why 0 0) audit)
+                         curve keeps rbs (+ illegal 1) dups))
+              (else
+                (let* ((tm0 (current-time-ms))
+                       (snap (ast:snapshot (format "step-~a" step)))
+                       (ok (apply-mutation! desc nps nrules))
+                       (tm1 (current-time-ms)))
+                  (if (not (eq? ok #t))
+                      (error (format "mutate:rebind 失败（第 ~a 步 ~a）：~a" step desc ok))
+                      #f)
+                  (assert-live! nps nrules "rebind 之后")
+                  (let* ((cand (evaluate (live-params) (live-rules) train val))
+                         (tm2 (current-time-ms))
+                         (d (gate-decide cur cand))
+                         (nt (car cand)) (nv (cadr cand))
+                         (row (list step desc (r3 (hash-ref nt "sharpe")) (r3 (hash-ref nt "maxdd"))
+                                    (hash-ref nt "trades") (r3 (hash-ref nv "sharpe")) (car d) (cadr d)
+                                    (- tm1 tm0) (- tm2 tm1)))
+                         (pt (list step (hash-ref nt "sharpe") (car d))))
+                    (if (equal? (car d) "KEEP")
+                        (loop (+ step 1) nps nrules cand (cons key seen) (cons row audit)
+                              (cons pt curve) (+ keeps 1) rbs illegal dups)
+                        (begin
+                          (if (not (ast:restore snap)) (error (format "ast:restore 失败（第 ~a 步）" step)) #f)
+                          (eval-current)
+                          (assert-live! ps rules "ast:restore 之后")
+                          (loop (+ step 1) ps rules cur (cons key seen) (cons row audit)
+                                (cons pt curve) keeps (+ rbs 1) illegal dups))))))))))))

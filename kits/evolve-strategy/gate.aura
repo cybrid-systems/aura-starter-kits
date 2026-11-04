@@ -1,0 +1,28 @@
+;; gate.aura — 明确的评分函数和门禁（改这里就改了"什么算进步"）
+;;
+;; 分数 = 训练集年化 Sharpe。候选要 KEEP，必须同时满足：
+;;   1. 训练集 Sharpe 至少提升 min-gain（排除噪声级改动）
+;;   2. 训练集最大回撤 ≤ max-dd
+;;   3. 交易次数 ≥ min-trades（排除"不交易"这种退化解）
+;;   4. 留出集（另一条合成行情）Sharpe 不比当前版本低超过 max-val-drop（防过拟合）
+;; 任何一条不满足 → ROLLBACK，原因写进审计日志。
+
+(define *gate*
+  (quote ((min-gain . 0.02) (max-dd . 0.25) (min-trades . 10) (max-val-drop . 0.10))))
+
+(define (gate-param k) (cdr (assq k *gate*)))
+
+;; cur / cand：(list train-result val-result)；返回 (list "KEEP"|"ROLLBACK" 原因)
+(define (gate-decide cur cand)
+  (let* ((ct (car cur)) (cv (cadr cur)) (nt (car cand)) (nv (cadr cand))
+         (gain (- (hash-ref nt "sharpe") (hash-ref ct "sharpe")))
+         (vdrop (- (hash-ref cv "sharpe") (hash-ref nv "sharpe"))))
+    (cond ((> (hash-ref nt "maxdd") (gate-param 'max-dd))
+           (list "ROLLBACK" (format "最大回撤 ~a > 上限 ~a" (r3 (hash-ref nt "maxdd")) (gate-param 'max-dd))))
+          ((< (hash-ref nt "trades") (gate-param 'min-trades))
+           (list "ROLLBACK" (format "交易次数 ~a < ~a（退化解）" (hash-ref nt "trades") (gate-param 'min-trades))))
+          ((< gain (gate-param 'min-gain))
+           (list "ROLLBACK" (format "训练 Sharpe 提升 ~a < ~a" (r3 gain) (gate-param 'min-gain))))
+          ((> vdrop (gate-param 'max-val-drop))
+           (list "ROLLBACK" (format "留出集 Sharpe 下降 ~a > ~a（疑似过拟合）" (r3 vdrop) (gate-param 'max-val-drop))))
+          (else (list "KEEP" (format "训练 Sharpe +~a，留出集 ~a" (r3 gain) (r3 (- 0 vdrop))))))))

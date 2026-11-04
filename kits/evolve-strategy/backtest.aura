@@ -1,0 +1,52 @@
+;; backtest.aura — 规则解释器 + 回测
+;;
+;; 第 i 根 bar 收盘时只用 0..i 的数据决定仓位，吃第 i+1 根的收益（没有未来函数）。
+;; 仓位变化收手续费 cost（单边）。
+
+(define *cost* 0.0005)
+
+(define (pget ps k) (cdr (assq k ps)))
+(define (has-rule? rules r) (if (member r rules) #t #f))
+
+;; 返回 -1 / 0 / 1
+(define (position-at m i ps rules)
+  (let* ((fast (sma m i (pget ps 'fast)))
+         (slow (sma m i (pget ps 'slow)))
+         (px (vector-ref (mkt m "close") i)))
+    (if (or (not fast) (not slow)) 0
+        (let* ((base (if (> fast slow) 1 -1))
+               (t (if (has-rule? rules 'trend-filter)
+                      (let ((tr (sma m i (pget ps 'trend))))
+                        (cond ((not tr) 0)
+                              ((and (= base 1) (< px tr)) 0)
+                              ((and (= base -1) (> px tr)) 0)
+                              (else base)))
+                      base))
+               (v (if (has-rule? rules 'vol-filter)
+                      (let ((vol (rvol m i (pget ps 'vol-win))))
+                        (if (and vol (> vol (pget ps 'vol-cap))) 0 t))
+                      t)))
+          (if (and (has-rule? rules 'long-only) (< v 0)) 0 v)))))
+
+(define (stdev xs-sum xs-sq n)
+  (if (< n 2) 0.0
+      (let ((mean (/ xs-sum n)))
+        (sqrt (max 0.0 (/ (- xs-sq (* n mean mean)) (- n 1)))))))
+
+;; 返回 hash：sharpe / maxdd / total / trades / equity（向量，可选）
+(define (backtest m ps rules keep-equity)
+  (let* ((n (mkt m "n")) (ret (mkt m "ret"))
+         (eq (if keep-equity (make-vector n 1.0) #f)))
+    (let loop ((i 0) (pos 0) (e 1.0) (peak 1.0) (mdd 0.0) (s 0.0) (sq 0.0) (k 0) (trades 0))
+      (if (>= i (- n 1))
+          (let ((sd (stdev s sq k)))
+            (hash "sharpe" (if (> sd 0.0) (* (/ (/ s k) sd) (sqrt 252.0)) 0.0)
+                  "maxdd" mdd "total" (- e 1.0) "trades" trades "equity" eq))
+          (let* ((p (position-at m i ps rules))
+                 (r (- (* p (vector-ref ret (+ i 1))) (* *cost* (abs (- p pos)))))
+                 (e2 (* e (+ 1.0 r)))
+                 (peak2 (max peak e2))
+                 (dd (/ (- peak2 e2) peak2)))
+            (if eq (vector-set! eq (+ i 1) e2) #f)
+            (loop (+ i 1) p e2 peak2 (max mdd dd) (+ s r) (+ sq (* r r)) (+ k 1)
+                  (if (= p pos) trades (+ trades 1))))))))

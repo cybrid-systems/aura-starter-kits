@@ -1,0 +1,9 @@
+;; util.aura — 小工具
+(define (r3 x) (/ (round (* x 1000.0)) 1000.0))
+(define (index-of xs x)
+  (let loop ((ys xs) (i 0)) (cond ((null? ys) -1) ((equal? (car ys) x) i) (else (loop (cdr ys) (+ i 1))))))
+(define (alist-set ps k v) (map (lambda (p) (if (eq? (car p) k) (cons k v) p)) ps))
+(define (remove-sym xs s) (filter (lambda (x) (not (eq? x s))) xs))
+(define (env-or k d) (let ((v (getenv k))) (if (and (string? v) (> (string-length v) 0)) v d)))
+(define (str x) (format "~a" x))
+(define (lines->text xs) (string-append (string-join xs "\n") "\n"))

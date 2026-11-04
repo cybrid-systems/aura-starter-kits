@@ -1,0 +1,5 @@
+out/
+.aura-src/
+.aura-build/
+*.log
+.aura-bin/

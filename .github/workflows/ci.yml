@@ -1,0 +1,64 @@
+# 用固定的 aura 提交（AURA_PIN）从源码构建 aura，然后跑每个 kit 并和 golden 结果比较。
+# aura 目前没有官方二进制/镜像，所以第一次（或换 AURA_PIN 后）要完整编译，之后命中缓存。
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"   # 每天跑一次，及时发现 aura 行为漂移
+
+jobs:
+  kits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    container:
+      image: ghcr.io/cybrid-systems/dev:v1.1.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read AURA_PIN
+        id: pin
+        run: echo "sha=$(cat AURA_PIN)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: .aura-bin
+          key: aura-bin-dev-v1.1.1-${{ steps.pin.outputs.sha }}
+
+      - name: Build aura @ AURA_PIN
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          git config --global --add safe.directory '*'
+          IN_CONTAINER=1 J=4 scripts/build-aura.sh
+
+      - name: evolve-strategy (golden, 20 steps)
+        run: scripts/check-golden.sh evolve-strategy
+
+      - name: evolve-strategy report (60 steps)
+        run: KIT_OUT=$PWD/report scripts/run-kit.sh evolve-strategy
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evolve-strategy-report
+          path: report/
+
+      # 同一程序在各种执行方式下应得到同一结果（aura "单一公开语义"）。
+      # 目前已知不一致，所以不阻塞 CI；修好后去掉 continue-on-error。
+      - name: Mode matrix (non-blocking)
+        continue-on-error: true
+        env:
+          AURA_BIN: ${{ github.workspace }}/.aura-bin/aura
+          KIT_STEPS: "6"
+          KIT_TIMEOUT: "120"
+          MATRIX_OUT: ${{ github.workspace }}/matrix
+        run: scripts/mode-matrix.sh evolve-strategy
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mode-matrix-logs
+          path: matrix/
+          if-no-files-found: ignore

@@ -1,0 +1,1 @@
+{"seed": 1, "steps": 20, "keeps": 3, "rollbacks": 17, "illegal": 0, "dups": 0, "train_sharpe_before": 0.817, "train_sharpe_after": 1.275, "val_sharpe_before": 0.647, "val_sharpe_after": 0.748, "train_maxdd_after": 0.188, "params": "((fast . 3) (slow . 5) (trend . 100) (vol-cap . 0.4) (vol-win . 40))", "rules": "(ma-cross vol-filter)"}

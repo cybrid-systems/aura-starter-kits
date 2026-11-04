@@ -1,0 +1,16 @@
+;; strategy.aura — 被进化的初始程序（会被 set-code 装进 Aura 的 live AST）
+;;
+;; 进化引擎只通过 mutate:rebind 改这两个定义；回滚用 ast:snapshot / ast:restore。
+;; 初始值故意留了改进空间：均线太短（噪声交易多、手续费高）、没有趋势过滤、没有波动率过滤、允许做空。
+;;
+;;   fast / slow   快慢均线窗口（bar 数）
+;;   trend         趋势过滤均线窗口（rules 里有 trend-filter 时生效）
+;;   vol-cap       年化波动率上限，超过就空仓（rules 里有 vol-filter 时生效）
+;;   vol-win       估计波动率的窗口
+;;   rules         启用的规则：ma-cross 是基础信号；trend-filter / vol-filter / long-only 可增删
+
+(define (strategy-params)
+  (quote ((fast . 2) (slow . 5) (trend . 100) (vol-cap . 0.4) (vol-win . 20))))
+
+(define (strategy-rules)
+  (quote (ma-cross)))
