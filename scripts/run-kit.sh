@@ -14,7 +14,7 @@ set -a; [ -f aura.env ] && . ./aura.env; set +a
 mkdir -p "${KIT_OUT:-out}"   # 沙箱里的 kit 不调 shell；write-file 不会建目录
 if [ "${USE_DOCKER:-0}" = 1 ]; then
   exec ${DOCKER:-docker} run --rm -v "$ROOT:$ROOT" -w "$PWD" \
-    -e "AURA_SANDBOX=${AURA_SANDBOX:-}" -e "KIT_STEPS=${KIT_STEPS:-60}" -e "KIT_SEED=${KIT_SEED:-1}" -e "KIT_OUT=${KIT_OUT:-out}" \
+    -e "AURA_SANDBOX=${AURA_SANDBOX:-}" -e "AURA_PRESET=${AURA_PRESET:-}" -e "KIT_STEPS=${KIT_STEPS:-60}" -e "KIT_SEED=${KIT_SEED:-1}" -e "KIT_OUT=${KIT_OUT:-out}" \
     "${AURA_DEV_IMAGE:-ghcr.io/cybrid-systems/dev:v1.1.1}" "$BIN" "$@" main.aura
 fi
 exec "$BIN" "$@" main.aura

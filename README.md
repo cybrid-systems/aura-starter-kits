@@ -10,7 +10,7 @@
 
 | kit | 内容 | 状态 |
 |---|---|---|
-| [evolve-strategy](kits/evolve-strategy/) | 程序在 live AST 里改写自己的交易策略参数/规则，训练集 + 留出集门禁决定 KEEP / ROLLBACK，输出 HTML 报告和审计表 | ✅ `AURA_SANDBOX=off` 下可跑；默认沙箱 / `aura soft` / force-soa 下跑不通（见日志） |
+| [evolve-strategy](kits/evolve-strategy/) | 程序在 live AST 里改写自己的交易策略参数/规则，训练集 + 留出集门禁决定 KEEP / ROLLBACK，输出 HTML 报告和审计表 | ✅ 默认 Restricted 沙箱 + `aura.toml` 里的 `preset = "dev"` 下可跑（不再需要 `AURA_SANDBOX=off`）；Restricted + force-soa、plain `--load` 仍不一致（见日志 F5） |
 
 ## 快速开始
 
@@ -34,8 +34,8 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 其他脚本：
 
 - `scripts/check-golden.sh`：20 步运行结果必须和 `kits/*/golden/summary.20.json` 完全一致（确定性回归）。
-- `scripts/mode-matrix.sh`：同一个 kit 在 沙箱{off, 默认, soft} × 管线{默认, STRICT=0, force-soa} × {直接运行, `--load`} 下各跑一遍，结果必须一致——这是"单一公开语义"的牵引测试，目前大部分格子是红的。
-- CI（`.github/workflows/ci.yml`）：在 dev 镜像里按 `AURA_PIN` 编译 aura（按提交缓存），跑 golden + 60 步报告（上传为 artifact），模式矩阵作为非阻塞步骤，每天定时跑一次以发现 aura 行为漂移。
+- `scripts/mode-matrix.sh`：同一个 kit 在 沙箱{off, 默认+aura.toml preset, soft} × 管线{默认, STRICT=0, force-soa} × {直接运行, `--load`} 下各跑一遍，结果必须一致——这是"单一公开语义"的牵引测试。已知不一致的格子用 `MATRIX_KNOWN_RED` 列出（每格对应一个 aura issue），其余格子必须一致。
+- CI（`.github/workflows/ci.yml`）：在 dev 镜像里按 `AURA_PIN` 编译 aura（按提交缓存），跑 golden + 60 步报告（上传为 artifact），模式矩阵（阻塞，已知红格见 `ci.yml` 里的 `MATRIX_KNOWN_RED`），每天定时跑一次以发现 aura 行为漂移。
 
 ## DX 摩擦日志
 
@@ -56,6 +56,9 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 
 ### 摩擦清单
 
+下表是 `21a862bf5` 时记录的原始摩擦。2026-11-05 在 aura `c4ec74cd9`（本仓库 `AURA_PIN`）上复查，状态见下一节。
+
+
 | # | 摩擦 | 影响 | issue |
 |---|---|---|---|
 | F1 | 没有预编译二进制 / 运行镜像；`release.yml` 调用的 `scripts/release.sh` 不存在；二进制要求 GLIBC 2.44 | 首次运行 ≈14 分钟 + 10GB 镜像 | [aura#4907](https://github.com/cybrid-systems/aura/issues/4907) |
@@ -74,9 +77,29 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 | F14 | 没有 `aura new <模板>`（`aura new foo` → `cannot open program file 'new'`）；`--help` 不列 `--check/--fmt/--typecheck/--evo-explain/--query`；`aura soft --load` 报 unknown option | 只能翻源码 | [aura#4913](https://github.com/cybrid-systems/aura/issues/4913) |
 | F15 | 小坑：`memq` 不存在（`member` 可以）且无提示；`(query :code)` 是未知 op，但有 `query:code` 原语；`sh` 需要 `(require "std/process")`，而它在默认沙箱要 exec 权限 | 卡几分钟 | [aura#4909](https://github.com/cybrid-systems/aura/issues/4909) |
 
+### 复查（aura `c4ec74cd9`，2026-11-05）
+
+| # | 状态 | 说明 |
+|---|---|---|
+| F1 | 部分 | aura 已有 dist 工作流（x86_64/arm64 tarball + sha256、install.sh、运行镜像），但还没有发布 release，所以仍要源码编译；首次运行耗时未变，等发布后重测 |
+| F2 | 已修 | 拒绝现在报 `effect-denied: mutate not granted … op=set-code`，带 `file:line:col` 和 hint（`aura --preset dev main.aura`）；kit 改用 `aura.toml` 的 `preset = "dev"` |
+| F3 | 已修 | `aura soft` 下 rebind 正常（aura#4914 已关） |
+| F4 | 部分 | force-soa 不再超时，但仍明显更慢：20 步 39 s vs 默认管线 9 s（aura#4915 未关） |
+| F5 | 部分 | 6 步矩阵 15 格里 10 格一致（原来 4 格）。仍不一致：plain `aura --load` 不读 `aura.toml`/`AURA_PRESET`；Restricted + force-soa 下第二次大批量 `set-car!` 报 `naked mutate: set-car! requires MutationBoundaryGuard`，`--load` 下同一拒绝被报成 `invalid closure` |
+| F6 | 已修 | aura#4916 已关 |
+| F7 | 大部分 | 首个错误即停（`--keep-going` 可继续）、分类准确、每条拒绝带 hint；过程体内的错误位置仍指向调用点（aura#4909） |
+| F8 | 已修 | aura#4917 已关 |
+| F9 | 已修 | aura#4918 已关 |
+| F10 | 已修 | aura#4919 已关 |
+| F11 | 部分 | 有了 `--preset dev\|ci\|prod`、`--grant`/`--deny`、`AURA_PRESET`、`aura.toml`（aura#4912 未关） |
+| F12 | 未修 | aura#4910 |
+| F13 | 未修 | aura#4911 |
+| F14 | 大部分 | `aura new app\|evolve\|agent`、`aura run`、`aura test` 可用；`--help` 列出 `--check/--fmt/--typecheck/--evo-explain/--query`；`aura soft --load` 可用 |
+| F15 | 部分 | `memq` 现在提示 `did you mean 'member'?` |
+
 总追踪 issue：[aura#4906](https://github.com/cybrid-systems/aura/issues/4906)
 
 ## 约定
 
 - `AURA_PIN` 记录验证过的 aura 提交；升级 aura 时改它，CI 会重新编译并跑全部 kit。
-- 新 kit 放在 `kits/<名字>/`，入口 `main.aura`，能力需求写在 `aura.env`，确定性结果放 `golden/summary.20.json`。
+- 新 kit 放在 `kits/<名字>/`，入口 `main.aura`，能力需求写在同目录 `aura.toml`（`preset = "dev"` 等），其他环境变量写在 `aura.env`，确定性结果放 `golden/summary.20.json`。

@@ -1,0 +1,3 @@
+# evolve-strategy 需要的 Aura 能力：自改写（set-code / mutate:rebind）+ 读写报告文件。
+# aura 会读取入口文件旁边的 aura.toml（aura#4912）；也可用 `aura --preset dev main.aura` 或 AURA_PRESET=dev。
+preset = "dev"
