@@ -14,16 +14,18 @@
 
 ## 快速开始
 
-Aura 目前**没有官方二进制或镜像**，只能从源码编译（需要 C++26 工具链，用公开的 dev 镜像）：
+用 aura 的官方产物（aura#4907：自包含 tarball / 运行时镜像，自带 loader 和 glibc，宿主 glibc 无关；Ubuntu 24.04 x86_64 / arm64 已验证），不需要编译：
 
 ```bash
 git clone https://github.com/cybrid-systems/aura-starter-kits && cd aura-starter-kits
 
-# 1. 编译 aura（固定在 AURA_PIN 记录的提交）。约 12 分钟（8 核，-j3），另需拉取 ~10GB 的 dev 镜像
-scripts/build-aura.sh                      # 需要 docker；产物在 .aura-bin/
+# 1. 取 AURA_PIN 对应的官方产物（从 ghcr.io/cybrid-systems/aura:<pin 前 9 位> 拷出 bundle 到 .aura-bin/，需要 docker）
+scripts/fetch-aura.sh
+#    或者装 nightly：curl -fsSL https://raw.githubusercontent.com/cybrid-systems/aura/main/install.sh | sh
+#    （之后用 AURA_BIN=$(command -v aura)）
 
-# 2. 运行 kit（aura 需要 GLIBC 2.44，大多数宿主机跑不了，所以默认在 dev 镜像里跑）
-USE_DOCKER=1 scripts/run-kit.sh evolve-strategy
+# 2. 运行 kit
+scripts/run-kit.sh evolve-strategy
 #   -> out/evo.jsonl（进化日志）  out/strategy.evolved.aura  out/summary.json
 #   报告：.aura-bin/aura evo report --html out/report --run last --log kits/evolve-strategy/out/evo.jsonl
 
@@ -32,11 +34,13 @@ AURA_BIN=/path/to/aura scripts/run-kit.sh evolve-strategy
 KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 ```
 
+要测没发布产物的 aura 提交：`AURA_REF=<sha> scripts/build-aura.sh`（源码编译，需要 dev 镜像，约 12 分钟）。
+
 其他脚本：
 
 - `scripts/check-golden.sh`：20 步运行结果必须和 `kits/*/golden/summary.20.json` 完全一致（确定性回归）。
 - `scripts/mode-matrix.sh`：同一个 kit 在 沙箱{off, 默认+aura.toml preset, soft} × 管线{默认, STRICT=0, force-soa} × {直接运行, `--load`} 下各跑一遍，结果必须一致——这是"单一公开语义"的牵引测试。已知不一致的格子用 `MATRIX_KNOWN_RED` 列出（每格对应一个 aura issue），其余格子必须一致。
-- CI（`.github/workflows/ci.yml`）：在 dev 镜像里按 `AURA_PIN` 编译 aura（按提交缓存），跑 golden + 60 步报告（上传为 artifact），模式矩阵（阻塞，已知红格见 `ci.yml` 里的 `MATRIX_KNOWN_RED`），每天定时跑一次以发现 aura 行为漂移。
+- CI（`.github/workflows/ci.yml`）：在干净的 ubuntu-24.04 runner 上用 `scripts/fetch-aura.sh` 取 `AURA_PIN` 的官方产物（不再编译），跑 golden + 60 步报告（上传为 artifact），模式矩阵（阻塞，已知红格见 `ci.yml` 里的 `MATRIX_KNOWN_RED`），每天定时跑一次以发现 aura 行为漂移。
 
 ## DX 摩擦日志
 
@@ -54,6 +58,8 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 | 对比：kit 本身 60 步的运行时间 | 20 s（aura 启动 50 ms） |
 
 理想状态：`curl … | sh` 或 `docker run ghcr.io/cybrid-systems/aura` 一行，< 1 分钟跑出第一个报告。
+
+**重测（2026-11-05，aura `d5e1fda62` 官方产物，同一台 8 核机器）**：`install.sh`（从 GitHub nightly 下载 + sha256 校验）2.8 s，或 `scripts/fetch-aura.sh` 从运行时镜像取 bundle；kit 60 步 25 s；**合计 < 30 s**（原来 ≈ 14 分钟）。aura 的 dist CI 在干净的 Ubuntu 24.04 x86_64 / arm64 runner 上从安装到 `out/report.html` 也是秒级。
 
 ### 摩擦清单
 
@@ -82,7 +88,7 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 
 | # | 状态 | 说明 |
 |---|---|---|
-| F1 | 部分 | aura 已有 dist 工作流（x86_64/arm64 tarball + sha256、install.sh、运行镜像），但还没有发布 release，所以仍要源码编译；首次运行耗时未变，等发布后重测 |
+| F1 | 已修 | 每个 main 提交发布 x86_64/arm64 自包含 tarball（+ sha256，nightly release）和多架构运行镜像 `ghcr.io/cybrid-systems/aura:<sha>` / `:nightly`；`install.sh` 按 `uname -m` 选架构。本仓库 CI 改用官方产物，首次运行 < 30 s（aura#4907） |
 | F2 | 已修 | 拒绝现在报 `effect-denied: mutate not granted … op=set-code`，带 `file:line:col` 和 hint（`aura --preset dev main.aura`）；kit 改用 `aura.toml` 的 `preset = "dev"` |
 | F3 | 已修 | `aura soft` 下 rebind 正常（aura#4914 已关） |
 | F4 | 已修 | force-soa 下每步 `mutate:rebind` 稳定在 2–3 ms（原来 61 ms → 2140 ms 线性增长），闭包不再泄漏（aura#4915 已关） |
@@ -102,5 +108,5 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 
 ## 约定
 
-- `AURA_PIN` 记录验证过的 aura 提交；升级 aura 时改它，CI 会重新编译并跑全部 kit。
+- `AURA_PIN` 记录验证过的 aura 提交（要有官方产物，即 aura 的 dist 跑完的 main 提交）；升级 aura 时改它，CI 会取新产物并跑全部 kit。
 - 新 kit 放在 `kits/<名字>/`，入口 `main.aura`，能力需求写在同目录 `aura.toml`（`preset = "dev"` 等），其他环境变量写在 `aura.env`，确定性结果放 `golden/summary.20.json`。

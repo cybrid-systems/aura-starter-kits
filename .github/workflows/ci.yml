@@ -1,5 +1,5 @@
-# 用固定的 aura 提交（AURA_PIN）从源码构建 aura，然后跑每个 kit 并和 golden 结果比较。
-# aura 目前没有官方二进制/镜像，所以第一次（或换 AURA_PIN 后）要完整编译，之后命中缓存。
+# 用固定的 aura 提交（AURA_PIN）的官方产物（aura#4907：运行时镜像 ghcr.io/cybrid-systems/aura:<sha>，
+# 自包含 bundle）跑每个 kit 并和 golden 结果比较。不再从源码编译；镜像不存在时 fetch-aura.sh 才退回源码构建。
 name: ci
 on:
   push:
@@ -11,28 +11,13 @@ on:
 
 jobs:
   kits:
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    container:
-      image: ghcr.io/cybrid-systems/dev:v1.1.1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      - name: Read AURA_PIN
-        id: pin
-        run: echo "sha=$(cat AURA_PIN)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@v4
-        id: cache
-        with:
-          path: .aura-bin
-          key: aura-bin-dev-v1.1.1-${{ steps.pin.outputs.sha }}
-
-      - name: Build aura @ AURA_PIN
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          git config --global --add safe.directory '*'
-          IN_CONTAINER=1 J=4 scripts/build-aura.sh
+      - name: Fetch aura @ AURA_PIN (official runtime image)
+        run: scripts/fetch-aura.sh
 
       - name: evolve-strategy (golden, 20 steps)
         run: scripts/check-golden.sh evolve-strategy
