@@ -100,7 +100,7 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 | F10 | 已修 | aura#4919 已关 |
 | F11 | 部分 | 有了 `--preset dev\|ci\|prod`、`--grant`/`--deny`、`AURA_PRESET`、`aura.toml`，`--load` 也生效（aura#4912 未关） |
 | F12 | 已修 | `evo:record!` 记录每个候选的决定、原因、门禁证据；`aura evo log` / `aura evo report --html` 直接出 KEEP/ROLLBACK 列表和 HTML 报告，本 kit 的 `report.aura` 已删除（aura#4910） |
-| F13 | 未修 | aura#4911 |
+| F13 | 已修 | `aura repl main.aura` 跑完一遍后数据（`train`/`val`）留在会话里；改 `backtest.aura` 后 `:reload backtest.aura` 只重绑改动的定义，`(evolve! 1 2 train val)` 接着跑，不重新生成行情；`:ws`、`:worldline`、`:snapshot`/`:restore`。`aura lsp` 给跨 `require` 的诊断和跳转（VS Code / Neovim 配置见 aura 的 docs/editor.md）。需要含 aura#4911 的 aura（下一个 nightly 之后再升 `AURA_PIN`） |
 | F14 | 大部分 | `aura new app\|evolve\|agent`、`aura run`、`aura test` 可用；`--help` 列出 `--check/--fmt/--typecheck/--evo-explain/--query`；`aura soft --load` 可用 |
 | F15 | 部分 | `memq` 现在提示 `did you mean 'member'?` |
 
