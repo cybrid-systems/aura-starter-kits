@@ -9,9 +9,10 @@
    - 在**训练**行情上回测（`backtest.aura`），同时在**留出**行情上回测；
    - `gate.aura` 裁决：训练 Sharpe 至少涨 0.02、回撤 ≤ 25%、交易 ≥ 10 次、留出 Sharpe 不能掉超过 0.10 → **KEEP**；否则 `ast:restore` **ROLLBACK**；
    - 契约（`fast < slow`、必须保留 `ma-cross`）不满足的提议直接拦截，不进 AST。
-4. `report.aura` 输出到 `out/`：
-   - `report.html`：分数曲线、初始 vs 进化后的留出净值曲线、每一步的 KEEP/ROLLBACK 表和原因；
-   - `audit.tsv`：每一步的变更、指标、裁决、原因、变更耗时、评测耗时；
+4. 进化过程写进 aura 的进化日志（aura#4910）：`evolve.aura` 对每个候选调用 `evo:record!`，记下变更描述、KEEP/ROLLBACK、原因（哪条门禁没过）、门禁证据（训练/留出 Sharpe、回撤、交易次数）、候选源码和耗时；`mutate:rebind` / `ast:restore` 也由 aura 自动记录。日志位置由 `aura.env` 里的 `AURA_EVO_LOG` 决定（默认 `out/evo.jsonl`）。
+   - `aura evo log --run last --log out/evo.jsonl`：在终端列出每个候选；
+   - `aura evo report --html out/report --run last --log out/evo.jsonl`：静态 HTML（时间线、分数曲线、每个候选相对上一个 KEEP 的源码 diff，不联网）。
+5. `outputs.aura` 输出到 `out/`：
    - `strategy.evolved.aura`：进化后的程序，可以直接替换 `strategy.aura` 再跑一轮；
    - `summary.json`：CI 用来比对的确定性摘要。
 
@@ -25,7 +26,7 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh         # 改步数 / 提议种子
 KIT_OUT=/tmp/r scripts/run-kit.sh                  # 改输出目录
 ```
 
-需要的能力面写在 `aura.env`（目前只能 `AURA_SANDBOX=off`，原因见仓库根 README 的摩擦日志）。
+需要的能力面写在 `aura.toml`（`preset = "dev"`）；额外环境变量（`AURA_EVO_LOG`）在 `aura.env`。
 
 ## 参考结果（aura 21a862bf5，seed 1，60 步）
 

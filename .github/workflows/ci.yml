@@ -38,7 +38,9 @@ jobs:
         run: scripts/check-golden.sh evolve-strategy
 
       - name: evolve-strategy report (60 steps)
-        run: KIT_OUT=$PWD/report scripts/run-kit.sh evolve-strategy
+        run: |
+          KIT_OUT=$PWD/report AURA_EVO_LOG=$PWD/report/evo.jsonl scripts/run-kit.sh evolve-strategy
+          .aura-bin/aura evo report --html report/html --run last --log report/evo.jsonl
 
       - uses: actions/upload-artifact@v4
         with:

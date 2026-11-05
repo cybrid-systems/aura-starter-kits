@@ -77,10 +77,22 @@
     (if (and (rebind-ok? a) (rebind-ok? b)) (begin (eval-current) #t) (format "~a" (if (rebind-ok? a) b a)))))
 
 ;; 主循环：返回 hash（初始/最终结果、审计行、每步分数）
+;; aura#4910：每个候选写进 aura 的进化日志（AURA_EVO_LOG）。target 固定为 "strategy"，
+;; 所以 `aura evo report` 的 diff 是相对上一个 KEEP 的版本。
+(define (cand-src ps rules)
+  (string-append "(define strategy-params " (params->src ps) ")\n(define strategy-rules " (rules->src rules) ")\n"))
+(define (record-candidate! step desc decision reason evidence ps rules ms)
+  (evo:record! "strategy" decision (format "第 ~a 步 ~a：~a" step desc reason) evidence (cand-src ps rules) ms))
+(define (gate-evidence res)
+  (let ((t (car res)) (v (cadr res)))
+    (hash "score" (r3 (hash-ref t "sharpe")) "train_maxdd" (r3 (hash-ref t "maxdd"))
+          "trades" (hash-ref t "trades") "val_sharpe" (r3 (hash-ref v "sharpe")))))
+
 (define (evolve! steps seed train val)
   (let* ((r (rng-make seed))
          (ps0 (live-params)) (rules0 (live-rules))
-         (res0 (evaluate ps0 rules0 train val)))
+         (res0 (evaluate ps0 rules0 train val))
+         (base (evo:record! "strategy" "keep" "初始程序（基线）" (gate-evidence res0) (cand-src ps0 rules0) 0)))
     (let loop ((step 1) (ps ps0) (rules rules0) (cur res0) (seen (list (format "~a~a" ps0 rules0)))
                (audit (list)) (curve (list)) (keeps 0) (rbs 0) (illegal 0) (dups 0))
       (if (> step steps)
@@ -94,7 +106,8 @@
                (loop (+ step 1) ps rules cur seen
                      (cons (list step desc "-" "-" "-" "-" "DUP" "邻域都评估过了" 0 0) audit)
                      curve keeps rbs illegal (+ dups 1)))
-              (why (loop (+ step 1) ps rules cur (cons key seen)
+              (why (record-candidate! step desc "ROLLBACK" (format "契约拦截：~a" why) (hash) nps nrules 0)
+                   (loop (+ step 1) ps rules cur (cons key seen)
                          (cons (list step desc "-" "-" "-" "-" "ILLEGAL" why 0 0) audit)
                          curve keeps rbs (+ illegal 1) dups))
               (else
@@ -113,7 +126,8 @@
                          (row (list step desc (r3 (hash-ref nt "sharpe")) (r3 (hash-ref nt "maxdd"))
                                     (hash-ref nt "trades") (r3 (hash-ref nv "sharpe")) (car d) (cadr d)
                                     (- tm1 tm0) (- tm2 tm1)))
-                         (pt (list step (hash-ref nt "sharpe") (car d))))
+                         (pt (list step (hash-ref nt "sharpe") (car d)))
+                         (rec (record-candidate! step desc (car d) (cadr d) (gate-evidence cand) nps nrules (- tm2 tm0))))
                     (if (equal? (car d) "KEEP")
                         (loop (+ step 1) nps nrules cand (cons key seen) (cons row audit)
                               (cons pt curve) (+ keeps 1) rbs illegal dups)

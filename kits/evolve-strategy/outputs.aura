@@ -1,0 +1,25 @@
+;; outputs.aura — 写 out/strategy.evolved.aura（进化后的程序，可以直接替换 strategy.aura 再跑一轮）和
+;; out/summary.json（CI 用它比对确定性结果）。
+;; 进化过程（每个候选的变更、KEEP/ROLLBACK、原因、门禁证据、耗时）不再由 kit 自己写报告：
+;; evolve.aura 用 evo:record! 写进 aura 的进化日志（AURA_EVO_LOG，见 aura.env），
+;; 用 `aura evo log` / `aura evo report --html DIR` 查看（aura#4910）。
+
+;; write-file 失败时读回检查（输出目录由 scripts/run-kit.sh 建好）。
+(define (write-file! path text)
+  (write-file path text)
+  (if (null? (read-file path))
+      (error (string-append "写文件失败：" path "（输出目录要先建好；scripts/run-kit.sh 会自动建）"))
+      #t))
+
+(define (write-outputs! dir out steps seed)
+  (let* ((res0 (hash-ref out "res0")) (res (hash-ref out "res")))
+    (write-file! (string-append dir "/strategy.evolved.aura")
+                (string-append ";; 由 evolve-strategy 生成（seed " (str seed) "，" (str steps) " 步）。可以直接替换 strategy.aura 再跑一轮。\n"
+                               "(define strategy-params " (params->src (hash-ref out "ps")) ")\n"
+                               "(define strategy-rules " (rules->src (hash-ref out "rules")) ")\n"))
+    (write-file! (string-append dir "/summary.json")
+                (format "{\"seed\": ~a, \"steps\": ~a, \"keeps\": ~a, \"rollbacks\": ~a, \"illegal\": ~a, \"dups\": ~a, \"train_sharpe_before\": ~a, \"train_sharpe_after\": ~a, \"val_sharpe_before\": ~a, \"val_sharpe_after\": ~a, \"train_maxdd_after\": ~a, \"params\": \"~a\", \"rules\": \"~a\"}\n"
+                        seed steps (hash-ref out "keeps") (hash-ref out "rollbacks") (hash-ref out "illegal") (hash-ref out "dups")
+                        (r3 (hash-ref (car res0) "sharpe")) (r3 (hash-ref (car res) "sharpe"))
+                        (r3 (hash-ref (cadr res0) "sharpe")) (r3 (hash-ref (cadr res) "sharpe"))
+                        (r3 (hash-ref (car res) "maxdd")) (hash-ref out "ps") (hash-ref out "rules")))))

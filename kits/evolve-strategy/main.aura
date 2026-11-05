@@ -5,12 +5,11 @@
 (require "./backtest")
 (require "./gate")
 (require "./evolve")
-(require "./report")
+(require "./outputs")
 
 (define steps (string->number (env-or "KIT_STEPS" "60")))
 (define seed (string->number (env-or "KIT_SEED" "1")))
 (define out-dir (env-or "KIT_OUT" "out"))
-(define t0 (current-time-ms))
 
 ;; 1. 把初始程序装进 live AST
 (set-code (read-file (env-or "KIT_STRATEGY" "strategy.aura")))
@@ -23,10 +22,8 @@
 ;; 3. 进化
 (define out (evolve! steps seed train val))
 
-;; 4. 报告
-(define e0 (hash-ref (backtest val (hash-ref out "ps0") (hash-ref out "rules0") #t) "equity"))
-(define e1 (hash-ref (backtest val (hash-ref out "ps") (hash-ref out "rules") #t) "equity"))
-(write-report! out-dir out steps seed train val e0 e1 (- (current-time-ms) t0))
+;; 4. 输出（进化过程在 aura 的进化日志里：aura evo log / aura evo report，aura#4910）
+(write-outputs! out-dir out steps seed)
 
 (display (format "evolve-strategy: ~a 步，KEEP ~a，ROLLBACK ~a，契约拦截 ~a，重复 ~a\n"
                  steps (hash-ref out "keeps") (hash-ref out "rollbacks") (hash-ref out "illegal") (hash-ref out "dups")))
@@ -35,4 +32,4 @@
                  (r3 (hash-ref (cadr (hash-ref out "res0")) "sharpe")) (r3 (hash-ref (cadr (hash-ref out "res")) "sharpe"))
                  (r3 (hash-ref (car (hash-ref out "res")) "maxdd"))))
 (display (format "进化后：~a ~a\n" (hash-ref out "ps") (hash-ref out "rules")))
-(display (format "报告：~a/report.html（审计 ~a/audit.tsv）\n" out-dir out-dir))
+(display (format "进化日志：~a（aura evo log --run last --log ~a；aura evo report --html ~a/report --run last --log ~a）\n" (evo:log-path) (evo:log-path) out-dir (evo:log-path)))
