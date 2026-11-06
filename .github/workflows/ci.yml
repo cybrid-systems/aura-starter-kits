@@ -1,5 +1,6 @@
 # 用固定的 aura 提交（AURA_PIN）的官方产物（aura#4907：运行时镜像 ghcr.io/cybrid-systems/aura:<sha>，
 # 自包含 bundle）跑每个 kit 并和 golden 结果比较。不再从源码编译；镜像不存在时 fetch-aura.sh 才退回源码构建。
+# 架构与 aura dist 相同：ubuntu-24.04（x86_64）和 ubuntu-24.04-arm（arm64，GitHub-hosted）。
 name: ci
 on:
   push:
@@ -11,33 +12,54 @@ on:
 
 jobs:
   kits:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
       - name: Fetch aura @ AURA_PIN (official runtime image)
-        run: scripts/fetch-aura.sh
+        run: |
+          set -euo pipefail
+          t0=$(date +%s%N)
+          scripts/fetch-aura.sh
+          fetch_ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+          echo "fetch_ms=$fetch_ms" >> "$GITHUB_ENV"
+          echo "fetch_ms=$fetch_ms arch=${{ matrix.arch }}"
+
+      # 冷启动到第一份 HTML 报告：不设 AURA_SANDBOX（默认 Restricted）+ kit 目录 aura.toml 的 preset=dev。
+      # 放在 golden 之前，计时只覆盖这次 60 步和报告生成。报告文件必须生成。
+      - name: Cold run to first HTML report (60 steps)
+        run: |
+          set -euo pipefail
+          t0=$(date +%s%N)
+          KIT_OUT=$PWD/report AURA_EVO_LOG=$PWD/report/evo.jsonl scripts/run-kit.sh evolve-strategy
+          .aura-bin/aura evo report --html report/html --run last --log report/evo.jsonl
+          test -s report/html/index.html
+          report_ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+          echo "arch=${{ matrix.arch }} fetch_ms=${fetch_ms} first_report_ms=${report_ms} fetch_plus_first_report_ms=$(( fetch_ms + report_ms ))"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evolve-strategy-report-${{ matrix.arch }}
+          path: report/
 
       - name: evolve-strategy (golden, 20 steps)
         run: scripts/check-golden.sh evolve-strategy
 
-      - name: evolve-strategy report (60 steps)
-        run: |
-          KIT_OUT=$PWD/report AURA_EVO_LOG=$PWD/report/evo.jsonl scripts/run-kit.sh evolve-strategy
-          .aura-bin/aura evo report --html report/html --run last --log report/evo.jsonl
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: evolve-strategy-report
-          path: report/
-
       # 同一程序在各种执行方式下应得到同一结果（aura "单一公开语义"，aura#4908）。
       # 阻塞：任何不一致都让 CI 变红。此 job 没有 continue-on-error。
-      # 2026-11-06 在官方镜像 ghcr.io/cybrid-systems/aura:7002d30ab（含 #4928，
-      # 尚无 #4937 的后续提交）上，evolve-strategy 6 步 15 格 diffs=0，
-      # 包括原先豁免的 unset-force-soa-direct、unset-force-soa-load、
-      # soft-force-soa-direct。不再设置 MATRIX_KNOWN_RED。
+      # 2026-11-06 在官方产物 b988527a0（x86_64，BUILD-INFO 同一 commit）上，
+      # evolve-strategy 6 步 15 格 diffs=0、rc 全 0，包括原先豁免的
+      # unset-force-soa-direct、unset-force-soa-load、soft-force-soa-direct。
+      # 不再设置 MATRIX_KNOWN_RED。arm64 在 ubuntu-24.04-arm 上跑同一套断言。
       - name: Mode matrix
         env:
           AURA_BIN: ${{ github.workspace }}/.aura-bin/aura
@@ -49,6 +71,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mode-matrix-logs
+          name: mode-matrix-logs-${{ matrix.arch }}
           path: matrix/
           if-no-files-found: ignore

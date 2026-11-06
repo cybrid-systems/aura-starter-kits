@@ -10,11 +10,11 @@
 
 | kit | 内容 | 状态 |
 |---|---|---|
-| [evolve-strategy](kits/evolve-strategy/) | 程序在 live AST 里改写自己的交易策略参数/规则，训练集 + 留出集门禁决定 KEEP / ROLLBACK，输出 HTML 报告和审计表 | ✅ 默认 Restricted 沙箱 + `aura.toml` 里的 `preset = "dev"` 下可跑（不再需要 `AURA_SANDBOX=off`）。官方镜像 `7002d30ab` 上 6 步模式矩阵 15 格一致（见 F5）；该镜像还没有 aura#4937 的 restore 修复 |
+| [evolve-strategy](kits/evolve-strategy/) | 程序在 live AST 里改写自己的交易策略参数/规则，训练集 + 留出集门禁决定 KEEP / ROLLBACK，输出 HTML 报告和审计表 | ✅ 默认 Restricted 沙箱 + `aura.toml` 里的 `preset = "dev"` 下可跑。`b988527a0` 的 x86_64 官方 tarball 上 6 步模式矩阵 15 格 `diffs=0`（见 F5）。arm64 kit 由 CI 的 `ubuntu-24.04-arm` 跑同一套断言 |
 
 ## 快速开始
 
-用 aura 的官方产物（aura#4907：自包含 tarball / 运行时镜像，自带 loader 和 glibc，宿主 glibc 无关；Ubuntu 24.04 x86_64 / arm64 已验证），不需要编译：
+用 aura 的官方产物（aura#4907：自包含 tarball / 运行时镜像，自带 loader 和 glibc，宿主 glibc 无关）。当前 `AURA_PIN` 是 `b988527a0`：x86_64 / arm64 tarball 的 BUILD-INFO 都是这个 commit。本机用核对过的 x86_64 tarball 跑过 kit 端到端；arm64 kit 在 CI 的 `ubuntu-24.04-arm` 上跑。不需要编译：
 
 ```bash
 git clone https://github.com/cybrid-systems/aura-starter-kits && cd aura-starter-kits
@@ -40,7 +40,7 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 
 - `scripts/check-golden.sh`：20 步运行结果必须和 `kits/*/golden/summary.20.json` 完全一致（确定性回归）。
 - `scripts/mode-matrix.sh`：同一个 kit 在 沙箱{off, 默认+aura.toml preset, soft} × 管线{默认, STRICT=0, force-soa} × {直接运行, `--load`} 下各跑一遍，结果必须一致——这是"单一公开语义"的牵引测试。已知不一致的格子用 `MATRIX_KNOWN_RED` 列出（每格对应一个 aura issue），其余格子必须一致。
-- CI（`.github/workflows/ci.yml`）：在干净的 ubuntu-24.04 runner 上用 `scripts/fetch-aura.sh` 取 `AURA_PIN` 的官方产物（不再编译），跑 golden + 60 步报告（上传为 artifact），模式矩阵（阻塞，不再豁免格子），每天定时跑一次以发现 aura 行为漂移。
+- CI（`.github/workflows/ci.yml`）：在 `ubuntu-24.04`（x86_64）和 `ubuntu-24.04-arm`（arm64，与 aura dist 相同的 GitHub-hosted runner）上用 `scripts/fetch-aura.sh` 取 `AURA_PIN` 的官方镜像。每个架构都跑：冷启动 60 步到第一份 HTML 报告（默认 Restricted + `preset = "dev"`，并打印耗时）、golden 20 步、阻塞的模式矩阵（`KIT_STEPS=6`，`KIT_TIMEOUT=120`，不设 `MATRIX_KNOWN_RED`）。报告和矩阵日志按架构上传。每天定时跑一次以发现 aura 行为漂移。
 
 ## DX 摩擦日志
 
@@ -61,9 +61,11 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 
 **重测（2026-11-05，aura `d5e1fda62` 官方产物，同一台 8 核机器）**：`install.sh`（从 GitHub nightly 下载 + sha256 校验）2.8 s，或 `scripts/fetch-aura.sh` 从运行时镜像取 bundle；kit 60 步 25 s；**合计 < 30 s**（原来 ≈ 14 分钟）。aura 的 dist CI 在干净的 Ubuntu 24.04 x86_64 / arm64 runner 上从安装到 `out/report.html` 也是秒级。
 
+**重测（2026-11-06，aura `b988527a0` / `b988527a065a9fad10cc96740b4c86d884fcca8e`，Ubuntu 24.04 x86_64）**：用已核对的官方 x86_64 tarball（sha256 `3dab63fb6c2549afbd4012ba20b0d79e2956af0fe4c9d852c781843a03c290df`，BUILD-INFO commit 与镜像层一致）。解包 0.7 s，默认 Restricted + `preset=dev`（进程打印 `sandbox=restricted caps=mutate,read,write`）下 60 步 23.3 s，`aura evo report` 写出 `index.html` 后合计 **24.0 s**。golden 20 步 11.3 s，21 条进化记录，与 `golden/summary.20.json` 一致。6 步模式矩阵 15 格全部 `rc=0`、`diffs=0`，72.3 s。运行时镜像 `ghcr.io/cybrid-systems/aura:b988527a0` 的 manifest digest 是 `sha256:3ca203229e5ebc18264f6ec1193031a5c5d012b4ecc20ca833676855d851dca9`（核对时 `:nightly` 指向同一 digest；nightly 标签会滚动）。amd64 子镜像 `sha256:f8fbff138babbfcd16fae179a2d869e0918968af2332d5d336ecd6b56b32bf38`，arm64 子镜像 `sha256:729272f2adba0ade3f595702afc3e9d98d37a24bdcb70a6b577eecd529c88ec4`。arm64 tarball sha256 `d3c1cb04b346e47aa4108547536fa3eddd5a7eb92ef41f506dd61e39142c58e4`，BUILD-INFO 是同一 commit；这台 x86_64 机器没有执行 arm64 kit。没有发布 v0.1 / stable / latest。
+
 ### 摩擦清单
 
-下表是 `21a862bf5` 时记录的原始摩擦。2026-11-05 在 aura `22049db39` 上复查（F4、F12 在 `d77b9c4bf`，即本仓库当前 `AURA_PIN` 上复查），状态见下一节。
+下表是 `21a862bf5` 时记录的原始摩擦。2026-11-05 在 aura `22049db39` 上复查（F4、F12 在当时的 pin `d77b9c4bf` 上复查），状态见下一节。当前 `AURA_PIN` 是 `b988527a0`。
 
 
 | # | 摩擦 | 影响 | issue |
@@ -92,7 +94,7 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 | F2 | 已修 | 拒绝现在报 `effect-denied: mutate not granted … op=set-code`，带 `file:line:col` 和 hint（`aura --preset dev main.aura`）；kit 改用 `aura.toml` 的 `preset = "dev"` |
 | F3 | 已修 | `aura soft` 下 rebind 正常（aura#4914 已关） |
 | F4 | 已修 | force-soa 下每步 `mutate:rebind` 稳定在 2–3 ms（原来 61 ms → 2140 ms 线性增长），闭包不再泄漏（aura#4915 已关） |
-| F5 | 已修（矩阵） | 2026-11-06 用官方镜像 `7002d30ab`（含 [aura#4928](https://github.com/cybrid-systems/aura/issues/4928)）跑 evolve-strategy 6 步：15 格 summary 与基准一致，`diffs=0`，包括 `unset-force-soa-direct`、`unset-force-soa-load`、`soft-force-soa-direct`。CI 不再列 `MATRIX_KNOWN_RED`。该镜像仍会在 `preset=dev` 的 rebind + `ast:snapshot` + `member` 上 SIGABRT（[aura#4937](https://github.com/cybrid-systems/aura/issues/4937)，修复已在更新的 main，但还没有对应的官方镜像） |
+| F5 | 已修（矩阵） | 2026-11-06 用官方产物 `b988527a0` 在 x86_64 上跑 evolve-strategy 6 步：15 格 summary 与基准一致，`diffs=0`，rc 全 0，包括 `unset-force-soa-direct`、`unset-force-soa-load`、`soft-force-soa-direct`。默认格子是 Restricted + `preset=dev`。CI 不列 `MATRIX_KNOWN_RED`，`KIT_TIMEOUT` 仍是 120 秒。arm64 同一断言在 `ubuntu-24.04-arm` 上跑。[aura#4937](https://github.com/cybrid-systems/aura/issues/4937) 已关；这次矩阵里的 soft / Restricted 格子没有断言崩溃 |
 | F6 | 已修 | aura#4916 已关 |
 | F7 | 大部分 | 首个错误即停（`--keep-going` 可继续）、分类准确、每条拒绝带 hint；过程体内的错误位置仍指向调用点（aura#4909） |
 | F8 | 已修 | aura#4917 已关 |
@@ -100,7 +102,7 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 | F10 | 已修 | aura#4919 已关 |
 | F11 | 部分 | 有了 `--preset dev\|ci\|prod`、`--grant`/`--deny`、`AURA_PRESET`、`aura.toml`，`--load` 也生效（aura#4912 未关） |
 | F12 | 已修 | `evo:record!` 记录每个候选的决定、原因、门禁证据；`aura evo log` / `aura evo report --html` 直接出 KEEP/ROLLBACK 列表和 HTML 报告，本 kit 的 `report.aura` 已删除（aura#4910） |
-| F13 | 已修 | `aura repl main.aura` 跑完一遍后数据（`train`/`val`）留在会话里；改 `backtest.aura` 后 `:reload backtest.aura` 只重绑改动的定义，`(evolve! 1 2 train val)` 接着跑，不重新生成行情；`:ws`、`:worldline`、`:snapshot`/`:restore`。`aura lsp` 给跨 `require` 的诊断和跳转（VS Code / Neovim 配置见 aura 的 docs/editor.md）。需要含 aura#4911 的 aura（下一个 nightly 之后再升 `AURA_PIN`） |
+| F13 | 已修 | `aura repl main.aura` 跑完一遍后数据（`train`/`val`）留在会话里；改 `backtest.aura` 后 `:reload backtest.aura` 只重绑改动的定义，`(evolve! 1 2 train val)` 接着跑，不重新生成行情；`:ws`、`:worldline`、`:snapshot`/`:restore`。`aura lsp` 给跨 `require` 的诊断和跳转（VS Code / Neovim 配置见 aura 的 docs/editor.md）。`b988527a0` 的二进制带 `aura repl` 和 `aura lsp`（[aura#4911](https://github.com/cybrid-systems/aura/issues/4911) 已关）。这次 kit 验收确认了这两个子命令存在，没有重跑热重载会话 |
 | F14 | 大部分 | `aura new app\|evolve\|agent`、`aura run`、`aura test` 可用；`--help` 列出 `--check/--fmt/--typecheck/--evo-explain/--query`；`aura soft --load` 可用 |
 | F15 | 部分 | `memq` 现在提示 `did you mean 'member'?` |
 
