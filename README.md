@@ -10,7 +10,7 @@
 
 | kit | 内容 | 状态 |
 |---|---|---|
-| [evolve-strategy](kits/evolve-strategy/) | 程序在 live AST 里改写自己的交易策略参数/规则，训练集 + 留出集门禁决定 KEEP / ROLLBACK，输出 HTML 报告和审计表 | ✅ 默认 Restricted 沙箱 + `aura.toml` 里的 `preset = "dev"` 下可跑（不再需要 `AURA_SANDBOX=off`）；Restricted + force-soa、plain `--load` 仍不一致（见日志 F5） |
+| [evolve-strategy](kits/evolve-strategy/) | 程序在 live AST 里改写自己的交易策略参数/规则，训练集 + 留出集门禁决定 KEEP / ROLLBACK，输出 HTML 报告和审计表 | ✅ 默认 Restricted 沙箱 + `aura.toml` 里的 `preset = "dev"` 下可跑（不再需要 `AURA_SANDBOX=off`）。官方镜像 `7002d30ab` 上 6 步模式矩阵 15 格一致（见 F5）；该镜像还没有 aura#4937 的 restore 修复 |
 
 ## 快速开始
 
@@ -40,7 +40,7 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 
 - `scripts/check-golden.sh`：20 步运行结果必须和 `kits/*/golden/summary.20.json` 完全一致（确定性回归）。
 - `scripts/mode-matrix.sh`：同一个 kit 在 沙箱{off, 默认+aura.toml preset, soft} × 管线{默认, STRICT=0, force-soa} × {直接运行, `--load`} 下各跑一遍，结果必须一致——这是"单一公开语义"的牵引测试。已知不一致的格子用 `MATRIX_KNOWN_RED` 列出（每格对应一个 aura issue），其余格子必须一致。
-- CI（`.github/workflows/ci.yml`）：在干净的 ubuntu-24.04 runner 上用 `scripts/fetch-aura.sh` 取 `AURA_PIN` 的官方产物（不再编译），跑 golden + 60 步报告（上传为 artifact），模式矩阵（阻塞，已知红格见 `ci.yml` 里的 `MATRIX_KNOWN_RED`），每天定时跑一次以发现 aura 行为漂移。
+- CI（`.github/workflows/ci.yml`）：在干净的 ubuntu-24.04 runner 上用 `scripts/fetch-aura.sh` 取 `AURA_PIN` 的官方产物（不再编译），跑 golden + 60 步报告（上传为 artifact），模式矩阵（阻塞，不再豁免格子），每天定时跑一次以发现 aura 行为漂移。
 
 ## DX 摩擦日志
 
@@ -92,7 +92,7 @@ KIT_STEPS=20 KIT_SEED=3 scripts/run-kit.sh     # 改步数 / 种子
 | F2 | 已修 | 拒绝现在报 `effect-denied: mutate not granted … op=set-code`，带 `file:line:col` 和 hint（`aura --preset dev main.aura`）；kit 改用 `aura.toml` 的 `preset = "dev"` |
 | F3 | 已修 | `aura soft` 下 rebind 正常（aura#4914 已关） |
 | F4 | 已修 | force-soa 下每步 `mutate:rebind` 稳定在 2–3 ms（原来 61 ms → 2140 ms 线性增长），闭包不再泄漏（aura#4915 已关） |
-| F5 | 部分 | 6 步矩阵 15 格里 12 格一致（原来 4 格）。plain `aura --load` 现在也读 `aura.toml`/`AURA_PRESET`，"naked mutate" 和 `--load` 下的 "invalid closure" 已修（aura#4908 进展）。剩下 Restricted/soft + force-soa 的 3 格：set-code 后 Moving compaction 让 `map`/`apply` 调用的 closure 静默返回 void（[aura#4928](https://github.com/cybrid-systems/aura/issues/4928)） |
+| F5 | 已修（矩阵） | 2026-11-06 用官方镜像 `7002d30ab`（含 [aura#4928](https://github.com/cybrid-systems/aura/issues/4928)）跑 evolve-strategy 6 步：15 格 summary 与基准一致，`diffs=0`，包括 `unset-force-soa-direct`、`unset-force-soa-load`、`soft-force-soa-direct`。CI 不再列 `MATRIX_KNOWN_RED`。该镜像仍会在 `preset=dev` 的 rebind + `ast:snapshot` + `member` 上 SIGABRT（[aura#4937](https://github.com/cybrid-systems/aura/issues/4937)，修复已在更新的 main，但还没有对应的官方镜像） |
 | F6 | 已修 | aura#4916 已关 |
 | F7 | 大部分 | 首个错误即停（`--keep-going` 可继续）、分类准确、每条拒绝带 hint；过程体内的错误位置仍指向调用点（aura#4909） |
 | F8 | 已修 | aura#4917 已关 |
