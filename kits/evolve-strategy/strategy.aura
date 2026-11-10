@@ -1,6 +1,6 @@
 ;; strategy.aura — 被进化的初始程序（会被 set-code 装进 Aura 的 live AST）
 ;;
-;; 进化引擎只通过 mutate:rebind 改这两个定义；回滚用 ast:snapshot / ast:restore。
+;; 进化引擎只通过 mutate:rebind 改这两个定义；回滚用 mw:snapshot / mw:restore。
 ;; 初始值故意留了改进空间：均线太短（噪声交易多、手续费高）、没有趋势过滤、没有波动率过滤、允许做空。
 ;;
 ;;   fast / slow   快慢均线窗口（bar 数）

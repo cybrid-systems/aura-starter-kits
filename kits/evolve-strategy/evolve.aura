@@ -1,4 +1,4 @@
-;; evolve.aura — 进化循环：提议 → 契约 → ast:snapshot → mutate:rebind → 评测 → 门禁 → KEEP 或 ast:restore
+;; evolve.aura — 进化循环：提议 → 契约 → mw:snapshot → mutate:rebind → 评测 → 门禁 → KEEP 或 mw:restore
 ;;
 ;; 被改的是 live AST 里的 strategy-params / strategy-rules 两个定义（不是宿主程序里的变量）。
 ;; 每一步都会重新调用 (strategy-params) / (strategy-rules) 读回 live 代码，确认变更真的生效、回滚真的回去了。
@@ -112,7 +112,7 @@
                          curve keeps rbs (+ illegal 1) dups))
               (else
                 (let* ((tm0 (current-time-ms))
-                       (snap (ast:snapshot (format "step-~a" step)))
+                       (snap (mw:snapshot (format "step-~a" step)))
                        (ok (apply-mutation! desc nps nrules))
                        (tm1 (current-time-ms)))
                   (if (not (eq? ok #t))
@@ -132,8 +132,8 @@
                         (loop (+ step 1) nps nrules cand (cons key seen) (cons row audit)
                               (cons pt curve) (+ keeps 1) rbs illegal dups)
                         (begin
-                          (if (not (ast:restore snap)) (error (format "ast:restore 失败（第 ~a 步）" step)) #f)
+                          (if (not (mw:restore snap)) (error (format "mw:restore 失败（第 ~a 步）" step)) #f)
                           (eval-current)
-                          (assert-live! ps rules "ast:restore 之后")
+                          (assert-live! ps rules "mw:restore 之后")
                           (loop (+ step 1) ps rules cur (cons key seen) (cons row audit)
                                 (cons pt curve) keeps (+ rbs 1) illegal dups))))))))))))

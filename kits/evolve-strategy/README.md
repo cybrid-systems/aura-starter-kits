@@ -5,11 +5,11 @@
 1. `strategy.aura` 是**被进化的程序**：`strategy-params`（均线周期、趋势过滤、波动上限……）和 `strategy-rules`（启用哪些规则）。
 2. `main.aura` 用 `set-code` 把它装进 live AST。
 3. 每一步 `evolve.aura`：
-   - `ast:snapshot` → 提议一个变更（改一个参数 / 同时改两个 / 开关一条规则）→ `mutate:rebind` 改写 live AST 里的定义 → 读回 live AST 确认生效；
+   - `mw:snapshot` → 提议一个变更（改一个参数 / 同时改两个 / 开关一条规则）→ `mutate:rebind` 改写 live AST 里的定义 → 读回 live AST 确认生效；
    - 在**训练**行情上回测（`backtest.aura`），同时在**留出**行情上回测；
-   - `gate.aura` 裁决：训练 Sharpe 至少涨 0.02、回撤 ≤ 25%、交易 ≥ 10 次、留出 Sharpe 不能掉超过 0.10 → **KEEP**；否则 `ast:restore` **ROLLBACK**；
+   - `gate.aura` 裁决：训练 Sharpe 至少涨 0.02、回撤 ≤ 25%、交易 ≥ 10 次、留出 Sharpe 不能掉超过 0.10 → **KEEP**；否则 `mw:restore` **ROLLBACK**；
    - 契约（`fast < slow`、必须保留 `ma-cross`）不满足的提议直接拦截，不进 AST。
-4. 进化过程写进 aura 的进化日志（aura#4910）：`evolve.aura` 对每个候选调用 `evo:record!`，记下变更描述、KEEP/ROLLBACK、原因（哪条门禁没过）、门禁证据（训练/留出 Sharpe、回撤、交易次数）、候选源码和耗时；`mutate:rebind` / `ast:restore` 也由 aura 自动记录。日志位置由 `aura.env` 里的 `AURA_EVO_LOG` 决定（默认 `out/evo.jsonl`）。
+4. 进化过程写进 aura 的进化日志（aura#4910）：`evolve.aura` 对每个候选调用 `evo:record!`，记下变更描述、KEEP/ROLLBACK、原因（哪条门禁没过）、门禁证据（训练/留出 Sharpe、回撤、交易次数）、候选源码和耗时；`mutate:rebind` / `mw:restore` 也由 aura 自动记录。日志位置由 `aura.env` 里的 `AURA_EVO_LOG` 决定（默认 `out/evo.jsonl`）。
    - `aura evo log --run last --log out/evo.jsonl`：在终端列出每个候选；
    - `aura evo report --html out/report --run last --log out/evo.jsonl`：静态 HTML（时间线、分数曲线、每个候选相对上一个 KEEP 的源码 diff，不联网）。
 5. `outputs.aura` 输出到 `out/`：
